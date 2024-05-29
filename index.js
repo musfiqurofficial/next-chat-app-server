@@ -10,13 +10,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: process.env.CORS_ORIGIN,
-    methods: ["GET", "POST", "DELETE"],
-    credentials: true,
-  },
-});
 
 // Connect to MongoDB
 mongoose
@@ -32,13 +25,29 @@ mongoose
   })
   .catch((err) => console.error("Error connecting to MongoDB Atlas:", err));
 
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN,
-    methods: ["GET", "POST", "DELETE"],
-    credentials: true,
-  })
-);
+const allowedOrigins = [
+  "https://next-chat-app-client.vercel.app",
+  "http://localhost:3000",
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "DELETE"],
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+
+const io = new Server(server, {
+  cors: corsOptions,
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -188,5 +197,5 @@ io.on("connection", (socket) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("Hello");
+  res.send("Hello Musfiq");
 });
