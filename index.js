@@ -2,33 +2,28 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const multer = require("multer");
 const http = require("http");
 const { Server } = require("socket.io");
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
-    // origin: "https://chatsappmess.netlify.app",
-    methods: ["GET", "POST",  "DELETE"],
+    origin: process.env.CORS_ORIGIN,
+    methods: ["GET", "POST", "DELETE"],
     credentials: true,
   },
 });
 
 // Connect to MongoDB
 mongoose
-  .connect(
-    `mongodb+srv://musfiqurofficial:musfiqurofficial@cluster0.7ggj7ca.mongodb.net/?retryWrites=true&w=majority`,
-    {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    }
-  )
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
   .then(() => {
     console.log("Connected to MongoDB Atlas");
     server.listen(PORT, () => {
@@ -39,20 +34,13 @@ mongoose
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST",  "DELETE"],
+    origin: process.env.CORS_ORIGIN,
+    methods: ["GET", "POST", "DELETE"],
     credentials: true,
   })
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Define schema for storing images in MongoDB
-const imageSchema = new mongoose.Schema({
-  name: String,
-  data: Buffer,
-  contentType: String,
-});
 
 const chatUserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
@@ -63,65 +51,11 @@ const messageSchema = new mongoose.Schema({
   to: String,
   text: String,
   timestamp: { type: Date, default: Date.now },
-  seen: { type: Boolean, default: false }, 
+  seen: { type: Boolean, default: false },
 });
 
-const Image = mongoose.model("Image", imageSchema);
 const ChatUser = mongoose.model("ChatUser", chatUserSchema);
 const Message = mongoose.model("Message", messageSchema);
-
-// Define storage for uploaded images
-const storage = multer.memoryStorage(); 
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // Limit file size to 10MB
-});
-
-// Use the upload middleware for imageUpload route
-app.post("/imageUpload", upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No image file provided" });
-    }
-
-    // Create new Image document
-    const newImage = new Image({
-      name: req.file.originalname,
-      data: req.file.buffer,
-      contentType: req.file.mimetype,
-    });
-
-    // Save the image to MongoDB
-    await newImage.save();
-
-    // Image uploaded successfully
-    res.status(200).json({ message: "Image uploaded successfully" });
-  } catch (error) {
-    console.error("Error uploading image:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-app.get("/images", async (req, res) => {
-  try {
-    // Retrieve all images from MongoDB
-    const images = await Image.find({}, "name contentType data");
-
-    // Map images to array of objects containing image name and content type
-    const imageData = images.map((image) => ({
-      name: image.name,
-      data: image.data,
-      contentType: image.contentType,
-    }));
-
-    // Send array of image data as response
-    res.status(200).json(imageData);
-  } catch (error) {
-    console.error("Error retrieving images:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 app.post("/saveUsername", async (req, res) => {
   const { username } = req.body;
@@ -192,16 +126,16 @@ app.get("/messages/:from/:to", async (req, res) => {
 
 app.delete("/messages/:id", async (req, res) => {
   const { id } = req.params;
-  console.log("Received delete request for message ID:", id); // Add this line to log the received ID
+  console.log("Received delete request for message ID:", id);
   try {
     const message = await Message.findByIdAndDelete(id);
     if (!message) {
-      console.log("Message not found for ID:", id); // Add this line to log if message is not found
+      console.log("Message not found for ID:", id);
       return res.status(404).json({ error: "Message not found" });
     }
     res.status(200).json({ message: "Message deleted successfully" });
   } catch (error) {
-    console.error("Error deleting message:", error); // Add this line to log the error
+    console.error("Error deleting message:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
