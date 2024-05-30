@@ -2,14 +2,11 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const http = require("http");
-const { Server } = require("socket.io");
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
-const server = http.createServer(app);
 
 // Connect to MongoDB
 mongoose
@@ -19,7 +16,7 @@ mongoose
   })
   .then(() => {
     console.log("Connected to MongoDB Atlas");
-    server.listen(PORT, () => {
+    app.listen(PORT, () => {
       console.log(`Server is running on http://localhost:${PORT}`);
     });
   })
@@ -43,11 +40,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-const io = new Server(server, {
-  cors: corsOptions,
-});
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -68,18 +60,14 @@ const Message = mongoose.model("Message", messageSchema);
 
 app.post("/saveUsername", async (req, res) => {
   const { username } = req.body;
-
   if (!username) {
     return res.status(400).json({ error: "Username is required" });
   }
 
   try {
     const existingUser = await ChatUser.findOne({ username });
-
     if (existingUser) {
-      return res
-        .status(200)
-        .json({ message: "Username already exists, proceeding to chat" });
+      return res.status(200).json({ message: "Username already exists, proceeding to chat" });
     }
 
     const newUser = new ChatUser({ username });
@@ -116,7 +104,6 @@ app.get("/chatUsers/:username", async (req, res) => {
   }
 });
 
-// New route to fetch messages between two users
 app.get("/messages/:from/:to", async (req, res) => {
   const { from, to } = req.params;
   try {
@@ -135,11 +122,9 @@ app.get("/messages/:from/:to", async (req, res) => {
 
 app.delete("/messages/:id", async (req, res) => {
   const { id } = req.params;
-  console.log("Received delete request for message ID:", id);
   try {
     const message = await Message.findByIdAndDelete(id);
     if (!message) {
-      console.log("Message not found for ID:", id);
       return res.status(404).json({ error: "Message not found" });
     }
     res.status(200).json({ message: "Message deleted successfully" });
@@ -149,53 +134,8 @@ app.delete("/messages/:id", async (req, res) => {
   }
 });
 
-const connectedUsers = new Set();
-
-io.on("connection", (socket) => {
-  console.log("New client connected");
-
-  socket.on("join", (username) => {
-    console.log(`${username} joined the chat`);
-    socket.username = username;
-    connectedUsers.add(username);
-    io.emit("updateUserStatus", Array.from(connectedUsers));
-    socket.join(username);
-  });
-
-  socket.on("privateMessage", async ({ from, to, text }) => {
-    try {
-      const timestamp = new Date();
-      const message = new Message({ from, to, text, timestamp });
-      await message.save();
-      console.log("Message saved:", message);
-
-      socket.to(from).emit("privateMessage", { ...message._doc, timestamp });
-      io.to(to).emit("privateMessage", { ...message._doc, timestamp });
-    } catch (error) {
-      console.error("Error saving message:", error);
-    }
-  });
-
-  socket.on("markAsSeen", async ({ from, to }) => {
-    try {
-      await Message.updateMany(
-        { from: from, to: to, seen: false },
-        { $set: { seen: true } }
-      );
-      io.to(from).emit("messagesSeen", { from, to });
-      io.to(to).emit("messagesSeen", { from, to });
-    } catch (error) {
-      console.error("Error marking messages as seen:", error);
-    }
-  });
-
-  socket.on("disconnect", () => {
-    console.log(`${socket.username} disconnected`);
-    connectedUsers.delete(socket.username);
-    io.emit("updateUserStatus", Array.from(connectedUsers));
-  });
-});
-
 app.get("/", (req, res) => {
-  res.send("Hello Musfiq");
+  res.send("Hello Musfiqur");
 });
+
+module.exports = app;
