@@ -2,6 +2,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const { createServer } = require("http");
+const { Server } = require("socket.io");
 
 dotenv.config();
 
@@ -16,15 +18,12 @@ mongoose
   })
   .then(() => {
     console.log("Connected to MongoDB Atlas");
-    app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-    });
   })
   .catch((err) => console.error("Error connecting to MongoDB Atlas:", err));
 
 const allowedOrigins = [
-  "https://next-chat-app-client.vercel.app",
   "http://localhost:3000",
+  "https://next-chat-app-client.vercel.app",
 ];
 
 const corsOptions = {
@@ -58,6 +57,8 @@ const messageSchema = new mongoose.Schema({
 const ChatUser = mongoose.model("ChatUser", chatUserSchema);
 const Message = mongoose.model("Message", messageSchema);
 
+// Define your routes here
+
 app.post("/saveUsername", async (req, res) => {
   const { username } = req.body;
   if (!username) {
@@ -67,7 +68,9 @@ app.post("/saveUsername", async (req, res) => {
   try {
     const existingUser = await ChatUser.findOne({ username });
     if (existingUser) {
-      return res.status(200).json({ message: "Username already exists, proceeding to chat" });
+      return res
+        .status(200)
+        .json({ message: "Username already exists, proceeding to chat" });
     }
 
     const newUser = new ChatUser({ username });
@@ -138,4 +141,62 @@ app.get("/", (req, res) => {
   res.send("Hello Musfiqur");
 });
 
-module.exports = app;
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
+const connectedUsers = new Set();
+
+io.on("connection", (socket) => {
+  console.log("New client connected");
+
+  socket.on("join", (username) => {
+    console.log(`${username} joined the chat`);
+    socket.username = username;
+    connectedUsers.add(username);
+    io.emit("updateUserStatus", Array.from(connectedUsers));
+    socket.join(username);
+  });
+
+  socket.on("privateMessage", async ({ from, to, text }) => {
+    try {
+      const timestamp = new Date();
+      const message = new Message({ from, to, text, timestamp });
+      await message.save();
+      console.log("Message saved:", message);
+
+      socket.to(from).emit("privateMessage", { ...message._doc, timestamp });
+      io.to(to).emit("privateMessage", { ...message._doc, timestamp });
+    } catch (error) {
+      console.error("Error saving message:", error);
+    }
+  });
+
+  socket.on("markAsSeen", async ({ from, to }) => {
+    try {
+      await Message.updateMany(
+        { from: from, to: to, seen: false },
+        { $set: { seen: true } }
+      );
+      io.to(from).emit("messagesSeen", { from, to });
+      io.to(to).emit("messagesSeen", { from, to });
+    } catch (error) {
+      console.error("Error marking messages as seen:", error);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    console.log(`${socket.username} disconnected`);
+    connectedUsers.delete(socket.username);
+    io.emit("updateUserStatus", Array.from(connectedUsers));
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});

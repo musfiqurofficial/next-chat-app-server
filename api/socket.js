@@ -5,8 +5,8 @@ const server = require("http").createServer(app);
 const io = new Server(server, {
   cors: {
     origin: [
-      "https://next-chat-app-client.vercel.app",
       "http://localhost:3000",
+      "https://next-chat-app-client.vercel.app",
     ],
     methods: ["GET", "POST"],
     credentials: true,
